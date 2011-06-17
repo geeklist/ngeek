@@ -30,10 +30,16 @@ Example
     
     ///// STATS //////
     
-    23    - messages (+2 new ones)
-    234   - high fives (+ 5 new ones)
-    4045  - endorsements (+1 new ones)
-    23    - followers (9+ new ones)
+    33     - achievements / decs 
+    2444   - views
+
+    ---------------------------------------
+
+    23     - messages (+2 new ones)
+    234    - high fives (+ 5 new ones)
+    4045   - endorsements (+1 new ones)
+    23     - followers (9+ new ones)
+    33     - collaborators (0 new ones)
     
 Todo
 ---
