@@ -1,0 +1,89 @@
+#!/usr/bin/env node
+
+var geeklist    = require('geeklist')
+var nopt        = require('nopt')
+
+var client      = null
+
+var known_opts  =
+  {
+  }
+
+var short_opts  =
+  {
+  }
+
+var argv        = nopt(known_opts, short_opts).argv
+
+
+// The help text.
+var help_text   =
+    "A tool for interacting with the Geekli.st online service."
+  + "Usage: ngeek [command] [sub-command] ...\n"
+  + "\n"
+  + "Commands:\n"
+  + "  help  Show this help text\n"
+
+
+// Error hash
+var ERRORS      =
+  { 2           :
+      "Please set your Geekli.st auth token to then environment variable"
+    + " $GEEKLIST_TOKEN. I.e.:\n"
+    + "\n"
+    + "    export $GEEKLIST_TOKEN=abc123\n"
+  }
+
+
+// The actual application starts here.
+
+/**
+ * Throw a meaningful error as defined in the ERRORS code to message
+ * hash. It will then exit the program sanely.
+ *
+ * @param {Number} code : The error code
+ */
+function throwError (code) {
+  console.error(ERRORS[code])
+
+  process.exit('number' === typeof code ? code : 1)
+}
+
+
+// The available commands.
+var COMMANDS  =
+  // Show the main help.
+  { help      : function () {
+      console.error(help_text)
+    }
+  }
+
+
+// Determine which command should be run
+var current_command = null
+var command_data    = []
+var remain          = argv.remain
+var data            = null
+var to_set          = null
+
+while (data = remain.shift()) {
+  to_set  = null
+
+  if (!current_command) {
+    to_set  = COMMANDS[data]
+  } else {
+    to_set  = current_command[data]
+  }
+
+  if (!to_set) {
+    command_data.push(data)
+    break
+  }
+
+  current_command = to_set
+}
+
+command_data.push.apply(command_data, remain)
+
+
+process.exit(0)
