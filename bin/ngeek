@@ -1,41 +1,128 @@
 #!/usr/bin/env node
 
-var geeklist    = require('geeklist')
-var nopt        = require('nopt')
+var geeklist      = require('geeklist')
+var nopt          = require('nopt')
+var prompt        = require('prompt')
+var ini           = require('ini')
+var fs            = require('fs')
+var path          = require('path')
 
-var client      = null
+// ==== Utility
 
-var known_opts  =
-  {
+/**
+ * Merge an object into another 1 layer deep
+ *
+ * @param {Object} sink
+ * @param {Object} tap
+ * @return {Object}
+ */
+function defaults (sink, tap) {
+  var keys   = Object.keys(tap)
+    , s_keys = Object.keys(sink)
+    , key
+
+  for (var i = 0, il = keys.length; i < il; i++) {
+    key = keys[i]
+
+    if (-1 !== s_keys.indexOf(key)) {
+      continue
+    }
+
+    sink[key] = tap[key]
   }
 
-var short_opts  =
-  {
+  return sink
+}
+
+
+// ==== Config
+
+var client        = null
+
+prompt.message    = 'ngeek'
+prompt.delimiter  = ': '
+
+var known_opts    =
+  { config        : String
   }
 
-var argv        = nopt(known_opts, short_opts).argv
+var short_opts    =
+  { c             : '--config'
+  }
 
+var argv          = nopt(known_opts, short_opts)
+var config_file   = argv.config
+var config        = null
+
+// Get the file config if possible
+try {
+  if (!config_file) {
+    config_file = path.join(process.env.HOME, '.ngeekrc')
+  }
+  config  = fs.readFileSync(config_file, 'utf8')
+  config  = ini.parse(config_file)
+} catch (error) {
+  config  = {}
+}
+
+// Default options
+defaults(config, {})
+
+/**
+ * Write the config object to disk.
+ */
+function writeConfig () {
+  return fs.writeFile(config_file, ini.stringify(config))
+}
+
+/**
+ * Create a client
+ */
+function createClient () {
+  client  = new geeklist.create(
+    { consumer_key    : config.consumer_key
+    , consumer_secret : config.consumer_secret
+    , access_token    : config.access_token
+    , access_secret   : config.access_secret
+    , usePin          : true
+    }
+  )
+
+  return client
+}
+
+
+// ==== Help and errors
 
 // The help text.
 var help_text   =
-    "A tool for interacting with the Geekli.st online service."
+    "A tool for interacting with the Geekli.st online service.\n"
   + "Usage: ngeek [command] [sub-command] ...\n"
   + "\n"
+  + "Flags:\n"
+  + "  -c, --config  Manually specify config file. Default: ~/.ngeekrc\n"
+  + "\n"
   + "Commands:\n"
-  + "  help  Show this help text\n"
+  + "  help          Show this help text\n"
+  + "  login         Authenticate and set all the tokens.\n"
 
 
 // Error hash
 var ERRORS      =
   { 2           :
-      "Please set your Geekli.st auth token to then environment variable"
-    + " $GEEKLIST_TOKEN. I.e.:\n"
-    + "\n"
-    + "    export $GEEKLIST_TOKEN=abc123\n"
+      "Could not find config file. Please check to see if\n"
+    + config_file + "\n"
+    + "exists.\n"
+  , 3           :
+      "Encountered an error when receiving user input.\n"
+    + "Try again or check `ngeek help`.\n"
+  , 4           :
+      "Encountered an error negotiating with oauth provider\n"
+    + "Try again or check `ngeek help`.\n"
   }
 
 
-// The actual application starts here.
+// ==== Commands
 
 /**
  * Throw a meaningful error as defined in the ERRORS code to message
@@ -56,13 +143,99 @@ var COMMANDS  =
   { help      : function () {
       console.error(help_text)
     }
+  , login     : function () {
+      console.error(
+          'First go create an application on the Geeklist website, with\n'
+        + 'the callback set to `oob`, then continue to enter the details\n'
+        + 'at the prompt.\n'
+      )
+
+      prompt.start()
+      prompt.get(
+        { properties        :
+          { consumer_key    :
+            { description   : 'Consumer Key'
+            }
+          , consumer_secret :
+            { description   : 'Consumer Secret'
+            }
+          }
+        }
+      , doneLoginPrompt
+      )
+    }
   }
+
+
+// ---- login
+
+/**
+ * Usually called after the login command has collected the
+ * consumer details for oauth authentication. Now we need to 
+ * generate an auth token for ourselves.
+ *
+ * @param {Error} error
+ * @param {Object} result : { consumer_key, consumer_secret }
+ */
+function doneLoginPrompt (error, result) {
+  if (error) return throwError(3)
+
+  config.consumer_key     = result.consumer_key
+  config.consumer_secret  = result.consumer_secret
+
+  // Now we go grab an access token
+  createClient()
+
+  client._authorize(doneLoginAuth)
+}
+
+/**
+ * Got the request token
+ *
+ * @param {Error} error
+ * @param {Object} result : { token, secret, auth_url }
+ */
+function doneLoginAuth (error, result) {
+  if (error) return throwError(4)
+
+  config.access_token   = result.token
+  config.access_secret  = result.secret
+
+  console.error(
+    "\nVisit " + result.auth_url + " to get your pin number.\n"
+  )
+
+  function doneLoginPin (error, input) {
+    if (error) return throwError(3)
+
+    client._pin(input.pin, result, doneLoginAccess)
+  }
+
+  prompt.get(['pin'], doneLoginPin)
+}
+
+/**
+ * Got the access tokens.
+ *
+ * @param {Error} error
+ * @param {Object} result : { token, secret }
+ */
+function doneLoginAccess (error, result) {
+  if (error) return throwError(4)
+
+  config.access_token   = result.token
+  config.access_secret  = result.secret
+
+  writeConfig()
+
+  console.error('\nAuthorization done. Saved to ' + config_file)
+}
 
 
 // Determine which command should be run
 var current_command = null
 var command_data    = []
-var remain          = argv.remain
+var remain          = argv.argv.remain
 var data            = null
 var to_set          = null
 
@@ -85,5 +258,7 @@ while (data = remain.shift()) {
 
 command_data.push.apply(command_data, remain)
 
+// Run the command
+if (current_command) return current_command(command_data)
 
 process.exit(0)

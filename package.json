@@ -14,8 +14,9 @@
 , "engines"         : { "node" : "0.6.x" }
 , "dependencies"    :
   { "nopt"          : "1.0.x"
-  , "oauth-client"  : "0.3.x"
   , "colors"        : "0.6.x"
+  , "prompt"        : "0.2.x"
+  , "ini"           : "1.0.x"
   }
 , "main"            : "./lib/geeklist"
 , "bin"             :
